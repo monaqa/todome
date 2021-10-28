@@ -277,104 +277,6 @@ pub enum StatusKind {
     Cancelled,
 }
 
-// pub trait TryFromNode: Sized {
-//     fn try_from_node(node: &Node, text: &str) -> Result<Cst<Self>>;
-//
-//     fn parse_with_cursor(text: &str) -> Result<Cst<Self>> {
-//         let mut parser = Parser::new();
-//         parser.set_language(tree_sitter_todome::language())?;
-//         let tree = parser
-//             .parse(text, None)
-//             .ok_or_else(|| anyhow!("parse failed."))?;
-//         let node = tree.root_node();
-//         Self::try_from_node(&node, text)
-//     }
-// }
-
-// pub struct Cst<T> {
-//     substr: String,
-//     range: CstRange,
-//     body: T,
-//     // comments: Vec<Cst<Comment>>,
-// }
-
-// impl<T> Cst<T> {
-//     fn from_node(body: T, node: &Node, text: &str) -> Self {
-//         let substr = {
-//             let start = node.start_byte();
-//             let end = node.end_byte();
-//             &text[start..end]
-//         }
-//         .to_owned();
-//         let range = {
-//             let start = node.start_position();
-//             let end = node.end_position();
-//             CstRange {
-//                 start: (start.row, start.column),
-//                 end: (end.row, end.column),
-//             }
-//         };
-//         Cst {
-//             substr,
-//             range,
-//             body,
-//         }
-//     }
-// }
-
-// pub struct SourceFile(Vec<Cst<Component>>);
-
-// impl TryFromNode for SourceFile {
-//     fn try_from_node(node: &Node, text: &str) -> Result<Cst<Self>> {
-//         let mut cursor = node.walk();
-//         if node.kind() != "source_file" {
-//             return Err(anyhow!(
-//                 "Unexpected kind, expected: source_file, actual: {}",
-//                 node.kind()
-//             ));
-//         }
-//
-//         let children: Vec<_> = node
-//             .children(&mut cursor)
-//             .map(|child| Component::try_from_node(&child, text))
-//             .try_collect()?;
-//
-//         Ok(Cst::from_node(SourceFile(children), &node, text))
-//     }
-// }
-
-// pub struct Component {
-//     pub kind: ComponentKind,
-//     pub status: Option<Cst<Status>>,
-//     pub priority: Vec<Cst<Priority>>,
-//     pub due: Vec<Cst<Due>>,
-//     pub keyval: Vec<Cst<KeyVal>>,
-//     pub category: Vec<Cst<Category>>,
-//     pub subtask: Vec<Cst<Component>>,
-// }
-//
-// pub enum ComponentKind {
-//     Task { body: String },
-//     Header,
-// }
-//
-// pub enum Status {
-//     Todo,
-//     Doing,
-//     Done,
-//     Cancelled,
-// }
-//
-// pub struct Priority(String);
-//
-// pub struct Due;
-//
-// pub struct KeyVal;
-//
-// pub struct Category(String);
-//
-// pub struct Comment(String);
-
 #[derive(Debug, Clone)]
 pub struct CstNode {
     kind: String,
@@ -479,21 +381,6 @@ impl Display for CstNode {
         write!(f, "{}", self.stringify(0))
     }
 }
-
-// pub struct Cst<T> {
-//     range: (usize, usize),
-//     body: T,
-// }
-//
-// pub struct Component {
-//     kind: ComponentKind,
-//     status: Option<Status>,
-//     priority: Vec<Priority>,
-//     due: Vec<Due>,
-//     keyval: Vec<KeyVal>,
-//     category: Vec<Category>,
-//     subtask: Vec<Component>,
-// }
 
 #[cfg(test)]
 mod tests {
