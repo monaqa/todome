@@ -4,7 +4,7 @@ use anyhow::*;
 use chrono::NaiveDate;
 use itertools::Itertools;
 use regex::Regex;
-use tree_sitter::{Node, Parser, Point, Tree, TreeCursor};
+use tree_sitter::{Node, Parser, Point, TreeCursor};
 
 pub fn parse_to_cst(text: &str) -> Result<CstNode> {
     let mut parser = Parser::new();
@@ -125,14 +125,21 @@ impl Cst {
 
             "status" => {
                 let child = node.child(0).unwrap();
-                let kind = match child.kind() {
-                    "status_todo" => StatusKind::Todo,
-                    "status_doing" => StatusKind::Doing,
-                    "status_done" => StatusKind::Done,
-                    "status_cancel" => StatusKind::Cancelled,
-                    _ => unreachable!(),
-                };
-                Rule::Status { kind }
+                match child.kind() {
+                    "status_todo" => Rule::Status {
+                        kind: StatusKind::Todo,
+                    },
+                    "status_doing" => Rule::Status {
+                        kind: StatusKind::Doing,
+                    },
+                    "status_done" => Rule::Status {
+                        kind: StatusKind::Done,
+                    },
+                    "status_cancel" => Rule::Status {
+                        kind: StatusKind::Cancelled,
+                    },
+                    _ => Rule::Error,
+                }
             }
 
             "priority" => {
@@ -171,7 +178,7 @@ impl Cst {
                 content: substr.clone(),
             },
 
-            s => unreachable!("{}", s),
+            _ => Rule::Error,
         };
         Ok(Cst {
             substr,
@@ -267,6 +274,7 @@ pub enum Rule {
     Comment {
         content: String,
     },
+    Error,
 }
 
 #[derive(Debug, Clone)]
