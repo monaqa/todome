@@ -17,13 +17,20 @@ pub fn parse_to_cst(text: &str) -> Result<CstNode> {
     Ok(cst)
 }
 
+/// ファイルをパースした結果。
 #[derive(Debug, Clone)]
 pub struct Cst {
-    substr: String,
-    range: (Point, Point),
-    range_bytes: (usize, usize),
-    rule: Rule,
-    // comments: Vec<Cst>,
+    pub substr: String,
+    pub range: (Point, Point),
+    pub range_bytes: (usize, usize),
+    pub rule: Rule,
+    pub comments: Vec<Cst>,
+}
+
+impl Display for Cst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.stringify(0))
+    }
 }
 
 impl Cst {
@@ -35,17 +42,6 @@ impl Cst {
             .ok_or_else(|| anyhow!("parse failed."))?;
         let node = tree.root_node();
         Cst::parse_from_node(&node, content)
-    }
-
-    pub fn collect_children_by_field_name(
-        node: &Node,
-        field_name: &str,
-        content: &str,
-    ) -> Result<Vec<Cst>> {
-        let mut cursor = node.walk();
-        node.children_by_field_name(field_name, &mut cursor)
-            .map(|node| Cst::parse_from_node(&node, content))
-            .try_collect()
     }
 
     pub fn collect_children(node: &Node, content: &str) -> Result<Vec<Cst>> {
@@ -72,6 +68,14 @@ impl Cst {
             let end = node.end_byte();
             (start, end)
         };
+
+        let comments: Vec<_> = {
+            let mut cursor = node.walk();
+            node.children_by_field_name("comment", &mut cursor)
+                .map(|node| Cst::parse_from_node(&node, content))
+                .try_collect()
+        }?;
+
         let rule = match node.kind() {
             "source_file" => {
                 let children = Cst::collect_children(node, content)?;
@@ -95,7 +99,14 @@ impl Cst {
                         .ok_or_else(|| anyhow!("field 'text' cannot be found in task."))?;
                     Box::new(Cst::parse_from_node(&node, content)?)
                 };
-                let children = Cst::collect_children_by_field_name(node, "children", content)?;
+                let children = if let Some(node) = node.child_by_field_name("children") {
+                    let mut cursor = node.walk();
+                    node.children(&mut cursor)
+                        .map(|node| Cst::parse_from_node(&node, content))
+                        .try_collect()?
+                } else {
+                    vec![]
+                };
                 Rule::Task {
                     status,
                     meta,
@@ -115,7 +126,14 @@ impl Cst {
                 } else {
                     vec![]
                 };
-                let children = Cst::collect_children_by_field_name(node, "children", content)?;
+                let children = if let Some(node) = node.child_by_field_name("children") {
+                    let mut cursor = node.walk();
+                    node.children(&mut cursor)
+                        .map(|node| Cst::parse_from_node(&node, content))
+                        .try_collect()?
+                } else {
+                    vec![]
+                };
                 Rule::Header {
                     status,
                     meta,
@@ -185,6 +203,7 @@ impl Cst {
             range,
             range_bytes,
             rule,
+            comments,
         })
     }
 
@@ -228,9 +247,68 @@ impl Cst {
     }
 
     /// そのカーソルが乗っている Cst の参照の列を返す。
-    /// Cst は範囲が広いものから順に並ぶ。
+    /// Cst は範囲が狭いものから順に並ぶ。
     fn get_csts_on_point(&self, cursor: Point) -> Vec<&Cst> {
-        todo!()
+        if !self.includes(cursor) {
+            return vec![];
+        }
+
+        let cst = self
+            .get_children()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|cst| cst.includes(cursor));
+        let mut v = cst
+            .map(|cst| cst.get_csts_on_point(cursor))
+            .unwrap_or_default();
+        v.push(self);
+        v
+    }
+
+    fn includes(&self, cursor: Point) -> bool {
+        let (start, end) = self.range;
+        start <= cursor && cursor <= end
+    }
+
+    fn rule_name(&self) -> &'static str {
+        match self.rule {
+            Rule::SourceFile { .. } => "soure_file",
+            Rule::Task { .. } => "task",
+            Rule::Header { .. } => "header",
+            Rule::Status { .. } => "status",
+            Rule::Priority { .. } => "priority",
+            Rule::Due { .. } => "due",
+            Rule::KeyVal { .. } => "keyval",
+            Rule::Category { .. } => "category",
+            Rule::Text { .. } => "text",
+            Rule::Comment { .. } => "comment",
+            Rule::Error => "ERROR",
+        }
+    }
+
+    fn stringify(&self, indent: usize) -> String {
+        let mut s = String::new();
+        let indent_str = " ".repeat(indent * 2);
+        s.push_str(&indent_str);
+        s.push_str(&format!("[{}]", self.rule_name(),));
+        if !self.substr.contains('\n') && self.substr.len() < 50 {
+            s.push_str(&format!(r#" "{}""#, self.substr));
+        } else {
+            let (start, end) = self.range;
+            s.push_str(&format!(
+                " ({}:{} .. {}:{})",
+                start.row + 1,
+                start.column + 1,
+                end.row + 1,
+                end.column + 1,
+            ));
+        }
+        s.push('\n');
+        for child in self.get_children().unwrap_or_default() {
+            let text = child.stringify(indent + 1);
+            s.push_str(&text);
+        }
+        s
     }
 }
 
@@ -404,5 +482,21 @@ mod tests {
     fn parse_source_file() {
         let cst = Cst::parse_source_file("- (A) test").unwrap();
         println!("{:#?}", cst);
+    }
+
+    #[test]
+    fn get_children() {
+        let cst = Cst::parse_source_file(
+            r#"
+- (A) test
+	[cattest] foo # a comment
+	bar
+            "#,
+        )
+        .unwrap();
+        let csts = cst.get_csts_on_point(Point { row: 2, column: 4 });
+        for cst in csts {
+            println!("{}", cst);
+        }
     }
 }
