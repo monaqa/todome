@@ -1,8 +1,10 @@
-use tower_lsp::lsp_types::{ClientCapabilities, ServerCapabilities};
+use tower_lsp::lsp_types::{
+    ClientCapabilities, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+};
 
 pub fn server_capabilities(_client_capabilities: &ClientCapabilities) -> ServerCapabilities {
     ServerCapabilities {
-        text_document_sync: None,
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::Full)),
         selection_range_provider: None,
         hover_provider: None,
         completion_provider: None,

@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use log::info;
+use log::{error, info};
 use tower_lsp::{
     lsp_types::{InitializeResult, ServerInfo},
     Client,
 };
 
-use crate::capabilities;
+use crate::{capabilities, document::DocumentCache};
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
@@ -30,7 +30,19 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
 
     async fn shutdown(&self) -> tower_lsp::jsonrpc::Result<()> {
-        todo!()
+        Ok(())
+    }
+
+    async fn did_open(&self, params: tower_lsp::lsp_types::DidOpenTextDocumentParams) {
+        self.inner().lock().await.did_open(params).await;
+    }
+
+    async fn did_change(&self, params: tower_lsp::lsp_types::DidChangeTextDocumentParams) {
+        self.inner().lock().await.did_change(params).await;
+    }
+
+    async fn did_save(&self, params: tower_lsp::lsp_types::DidSaveTextDocumentParams) {
+        self.inner().lock().await.did_save(params).await;
     }
 }
 
@@ -38,11 +50,15 @@ impl tower_lsp::LanguageServer for LanguageServer {
 pub struct Inner {
     /// The LSP client that this LSP server is connected to.
     client: Client,
+    document_cache: DocumentCache,
 }
 
 impl Inner {
     fn new(client: Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            document_cache: DocumentCache::default(),
+        }
     }
 
     async fn initialize(
@@ -67,5 +83,32 @@ impl Inner {
             capabilities,
             server_info: Some(server_info),
         })
+    }
+
+    async fn did_open(&mut self, params: tower_lsp::lsp_types::DidOpenTextDocumentParams) {
+        info!("called did_open");
+        let url = params.text_document.uri;
+        let text = params.text_document.text;
+        if let Err(e) = self.document_cache.register_or_update(url.clone(), text) {
+            error!("Failed to register document {}", url);
+            error!("{}", e);
+        }
+    }
+
+    async fn did_change(&mut self, mut params: tower_lsp::lsp_types::DidChangeTextDocumentParams) {
+        info!("called did_change");
+        let url = params.text_document.uri;
+        // full changes を仮定
+        if params.content_changes.get(0).is_some() {
+            let text = params.content_changes.swap_remove(0).text;
+            if let Err(e) = self.document_cache.register_or_update(url.clone(), text) {
+                error!("Failed to register document {}", url);
+                error!("{}", e);
+            }
+        }
+    }
+
+    async fn did_save(&mut self, params: tower_lsp::lsp_types::DidSaveTextDocumentParams) {
+        info!("called did_save");
     }
 }

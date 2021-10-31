@@ -1,4 +1,5 @@
 pub mod capabilities;
+pub mod document;
 pub mod language_server;
 pub mod parser;
 
