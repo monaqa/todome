@@ -3,6 +3,7 @@ use std::fmt::Display;
 use anyhow::*;
 use chrono::NaiveDate;
 use itertools::Itertools;
+use log::debug;
 use regex::Regex;
 use tree_sitter::{Node, Parser, Point};
 
@@ -157,7 +158,7 @@ impl Cst {
             }
 
             "due" => {
-                let re = Regex::new(r#"\{(.*)\}"#).unwrap();
+                let re = Regex::new(r#"\((.*)\)"#).unwrap();
                 let s_value = &re.captures(&substr).unwrap()[1];
                 let value = NaiveDate::parse_from_str(s_value, "%Y-%m-%d")?;
                 Rule::Due { value }
@@ -177,13 +178,23 @@ impl Cst {
                 Rule::Category { name }
             }
 
-            "text" => Rule::Text {
-                content: substr.clone(),
-            },
+            "text" => {
+                let tags = Cst::collect_children(node, content)?;
+                Rule::Text {
+                    content: substr.clone(),
+                    tags,
+                }
+            }
 
             "comment" => Rule::Comment {
                 content: substr.clone(),
             },
+
+            "tag" => {
+                let re = Regex::new(r#"@(.*)"#).unwrap();
+                let name = re.captures(&substr).unwrap()[1].to_owned();
+                Rule::Tag { name }
+            }
 
             _ => Rule::Error,
         };
@@ -231,6 +242,7 @@ impl Cst {
                 v.extend(children);
                 Some(v)
             }
+            Rule::Text { tags, .. } => Some(tags.iter().collect()),
             _ => None,
         }
     }
@@ -270,6 +282,7 @@ impl Cst {
             Rule::KeyVal { .. } => "keyval",
             Rule::Category { .. } => "category",
             Rule::Text { .. } => "text",
+            Rule::Tag { .. } => "tag",
             Rule::Comment { .. } => "comment",
             Rule::Error => "ERROR",
         }
@@ -362,6 +375,10 @@ pub enum Rule {
     },
     Text {
         content: String,
+        tags: Vec<Cst>,
+    },
+    Tag {
+        name: String,
     },
     Comment {
         content: String,
