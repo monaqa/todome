@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "todome-language-server"
+path = "src/bin/todome_language_server.rs"
+
 [dependencies]
 anyhow = "1.0.44"
 chrono = "0.4.19"
@@ -12,8 +16,11 @@ env_logger = "0.9.0"
 itertools = "0.10.1"
 log = "0.4.14"
 regex = "1.5.4"
+simplelog = "0.10.2"
 structopt = "0.3.25"
 thiserror = "1.0.30"
+tokio = { version = "1.13.0", features = ["full"] }
+tower-lsp = "0.14.1"
 tree-sitter = "0.20.0"
 tree-sitter-todome = { path = "../tree-sitter-todome" }
 
