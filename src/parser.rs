@@ -33,14 +33,14 @@ impl Cst {
         Cst::parse_from_node(&node, content)
     }
 
-    pub fn collect_children(node: &Node, content: &str) -> Result<Vec<Cst>> {
+    fn collect_children(node: &Node, content: &str) -> Result<Vec<Cst>> {
         let mut cursor = node.walk();
         node.children(&mut cursor)
             .map(|node| Cst::parse_from_node(&node, content))
             .try_collect()
     }
 
-    pub fn parse_from_node(node: &Node, content: &str) -> Result<Cst> {
+    fn parse_from_node(node: &Node, content: &str) -> Result<Cst> {
         let substr = {
             let start = node.start_byte();
             let end = node.end_byte();
@@ -237,7 +237,7 @@ impl Cst {
 
     /// そのカーソルが乗っている Cst の参照の列を返す。
     /// Cst は範囲が狭いものから順に並ぶ。
-    fn get_csts_on_point(&self, cursor: Point) -> Vec<&Cst> {
+    pub fn get_csts_on_point(&self, cursor: Point) -> Vec<&Cst> {
         if !self.includes(cursor) {
             return vec![];
         }
@@ -259,7 +259,7 @@ impl Cst {
         start <= cursor && cursor <= end
     }
 
-    fn rule_name(&self) -> &'static str {
+    pub fn rule_name(&self) -> &'static str {
         match self.rule {
             Rule::SourceFile { .. } => "soure_file",
             Rule::Task { .. } => "task",
@@ -273,6 +273,31 @@ impl Cst {
             Rule::Comment { .. } => "comment",
             Rule::Error => "ERROR",
         }
+    }
+
+    pub fn search_cst<F>(&self, predicate: F) -> Vec<&Cst>
+    where
+        F: Fn(&Cst) -> bool,
+    {
+        let mut v = self.search_cst_aux(&predicate);
+        v.reverse();
+        v
+    }
+
+    fn search_cst_aux<F>(&self, predicate: &F) -> Vec<&Cst>
+    where
+        F: Fn(&Cst) -> bool,
+    {
+        let mut csts = self
+            .get_children()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|cst| cst.search_cst_aux(predicate))
+            .concat();
+        if predicate(self) {
+            csts.push(self)
+        }
+        csts
     }
 
     fn stringify(&self, indent: usize) -> String {

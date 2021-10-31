@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     if opts.tcp {
         if std::env::var("RUST_LOG").unwrap_or_default().is_empty() {
-            std::env::set_var("RUST_LOG", "info");
+            std::env::set_var("RUST_LOG", "debug");
         }
         env_logger::init();
 

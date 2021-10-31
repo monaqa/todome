@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use log::{error, info};
+use log::{debug, error, info};
 use tower_lsp::{
     lsp_types::{InitializeResult, ServerInfo},
     Client,
@@ -43,6 +43,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     async fn did_save(&self, params: tower_lsp::lsp_types::DidSaveTextDocumentParams) {
         self.inner().lock().await.did_save(params).await;
+    }
+
+    async fn did_close(&self, params: tower_lsp::lsp_types::DidCloseTextDocumentParams) {
+        self.inner().lock().await.did_close(params).await;
     }
 }
 
@@ -89,9 +93,15 @@ impl Inner {
         info!("called did_open");
         let url = params.text_document.uri;
         let text = params.text_document.text;
-        if let Err(e) = self.document_cache.register_or_update(url.clone(), text) {
-            error!("Failed to register document {}", url);
-            error!("{}", e);
+        match self.document_cache.register_or_update(&url, text) {
+            Ok(document) => {
+                let diags = document.get_diagnostics();
+                self.client.publish_diagnostics(url, diags, None).await;
+            }
+            Err(e) => {
+                error!("Failed to register document {}", url);
+                error!("{}", e);
+            }
         }
     }
 
@@ -101,7 +111,7 @@ impl Inner {
         // full changes を仮定
         if params.content_changes.get(0).is_some() {
             let text = params.content_changes.swap_remove(0).text;
-            if let Err(e) = self.document_cache.register_or_update(url.clone(), text) {
+            if let Err(e) = self.document_cache.register_or_update(&url, text) {
                 error!("Failed to register document {}", url);
                 error!("{}", e);
             }
@@ -110,5 +120,15 @@ impl Inner {
 
     async fn did_save(&mut self, params: tower_lsp::lsp_types::DidSaveTextDocumentParams) {
         info!("called did_save");
+        let url = params.text_document.uri;
+        if let Some(document) = self.document_cache.get(&url) {
+            debug!("{}", document.display_cst());
+            let diags = document.get_diagnostics();
+            self.client.publish_diagnostics(url, diags, None).await;
+        }
+    }
+
+    async fn did_close(&mut self, _params: tower_lsp::lsp_types::DidCloseTextDocumentParams) {
+        info!("called did_close");
     }
 }
