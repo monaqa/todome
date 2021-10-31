@@ -4,18 +4,7 @@ use anyhow::*;
 use chrono::NaiveDate;
 use itertools::Itertools;
 use regex::Regex;
-use tree_sitter::{Node, Parser, Point, TreeCursor};
-
-pub fn parse_to_cst(text: &str) -> Result<CstNode> {
-    let mut parser = Parser::new();
-    parser.set_language(tree_sitter_todome::language())?;
-    let tree = parser
-        .parse(text, None)
-        .ok_or_else(|| anyhow!("parse failed."))?;
-    let mut cursor = tree.walk();
-    let cst = CstNode::from_cursor(&mut cursor, text);
-    Ok(cst)
-}
+use tree_sitter::{Node, Parser, Point};
 
 /// ファイルをパースした結果。
 #[derive(Debug, Clone)]
@@ -363,120 +352,9 @@ pub enum StatusKind {
     Cancelled,
 }
 
-#[derive(Debug, Clone)]
-pub struct CstNode {
-    kind: String,
-    substr: String,
-    range: CstRange,
-    children: Vec<CstNode>,
-    field_name: Option<String>,
-    named: bool,
-    extra: bool,
-    error: bool,
-    missing: bool,
-}
-
-#[derive(Debug, Clone)]
-struct CstRange {
-    start: (usize, usize),
-    end: (usize, usize),
-}
-
-impl CstNode {
-    /// TODO: もっと効率良い方法がありそう
-    fn from_cursor(cursor: &mut TreeCursor, text: &str) -> CstNode {
-        let node = cursor.node();
-        let field_name = cursor.field_name().map(|s| s.to_owned());
-        let kind = node.kind().to_owned();
-        let range = {
-            let start = node.start_position();
-            let end = node.end_position();
-            CstRange {
-                start: (start.row, start.column),
-                end: (end.row, end.column),
-            }
-        };
-        let substr = {
-            let start = node.start_byte();
-            let end = node.end_byte();
-            &text[start..end]
-        }
-        .to_owned();
-        let children: Vec<_> = node
-            .children(cursor)
-            .into_iter()
-            .map(|child| {
-                let mut cursor = child.walk();
-                CstNode::from_cursor(&mut cursor, text)
-            })
-            .collect();
-        CstNode {
-            kind,
-            range,
-            substr,
-            children,
-            field_name,
-            named: node.is_named(),
-            extra: node.is_extra(),
-            error: node.is_error(),
-            missing: node.is_missing(),
-        }
-    }
-
-    fn stringify(&self, indent: usize) -> String {
-        if !self.named {
-            return "".to_owned();
-        }
-        let mut s = String::new();
-        let indent_str = " ".repeat(indent * 2);
-        s.push_str(&indent_str);
-        if let Some(field_name) = &self.field_name {
-            s.push_str(&format!("{}:", field_name,));
-        }
-        if self.error {
-            s.push_str(&format!("[!{}!]", self.kind,));
-        } else if self.missing {
-            s.push_str(&format!("[?{}?]", self.kind,));
-        } else if self.extra {
-            s.push_str(&format!("[%{}%]", self.kind,));
-        } else {
-            s.push_str(&format!("[{}]", self.kind,));
-        }
-        if !self.substr.contains('\n') && self.substr.len() < 50 {
-            s.push_str(&format!(r#" "{}""#, self.substr));
-        } else {
-            s.push_str(&format!(
-                " ({}:{} .. {}:{})",
-                self.range.start.0 + 1,
-                self.range.start.1 + 1,
-                self.range.end.0 + 1,
-                self.range.end.1 + 1,
-            ));
-        }
-        s.push('\n');
-        for child in &self.children {
-            let text = child.stringify(indent + 1);
-            s.push_str(&text);
-        }
-        s
-    }
-}
-
-impl Display for CstNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.stringify(0))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_a_file() {
-        let cst = parse_to_cst("- (A) {2012-10-15} test").unwrap();
-        println!("{:#?}", cst);
-    }
 
     #[test]
     fn parse_source_file() {
