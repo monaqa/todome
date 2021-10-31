@@ -157,7 +157,7 @@ impl Cst {
             }
 
             "due" => {
-                let re = Regex::new(r#"\{(.*)\}"#).unwrap();
+                let re = Regex::new(r#"\((.*)\)"#).unwrap();
                 let s_value = &re.captures(&substr).unwrap()[1];
                 let value = NaiveDate::parse_from_str(s_value, "%Y-%m-%d")?;
                 Rule::Due { value }
