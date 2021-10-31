@@ -111,9 +111,15 @@ impl Inner {
         // full changes を仮定
         if params.content_changes.get(0).is_some() {
             let text = params.content_changes.swap_remove(0).text;
-            if let Err(e) = self.document_cache.register_or_update(&url, text) {
-                error!("Failed to register document {}", url);
-                error!("{}", e);
+            match self.document_cache.register_or_update(&url, text) {
+                Ok(document) => {
+                    let diags = document.get_diagnostics();
+                    self.client.publish_diagnostics(url, diags, None).await;
+                }
+                Err(e) => {
+                    error!("Failed to register document {}", url);
+                    error!("{}", e);
+                }
             }
         }
     }
