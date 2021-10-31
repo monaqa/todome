@@ -1,5 +1,6 @@
 pub mod capabilities;
 pub mod document;
+pub mod format;
 pub mod language_server;
 pub mod parser;
 pub mod position;
