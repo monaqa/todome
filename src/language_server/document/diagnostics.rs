@@ -1,7 +1,7 @@
 use chrono::{Local, NaiveDate};
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 
-use crate::{parser::Rule, position::ConvertBetweenBytes};
+use crate::{language_server::position::ConvertBetweenBytes, parser::Rule};
 
 use super::Document;
 

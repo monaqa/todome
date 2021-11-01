@@ -14,7 +14,7 @@ use itertools::Itertools;
 use tower_lsp::lsp_types::Position;
 use tree_sitter::Point;
 
-use crate::document::Document;
+use super::document::Document;
 
 /// Document が与えられた上での usize との相互変換。
 pub trait ConvertBetweenBytes: Sized {

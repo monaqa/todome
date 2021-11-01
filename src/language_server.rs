@@ -1,3 +1,7 @@
+mod capabilities;
+mod document;
+mod position;
+
 use std::sync::Arc;
 
 use log::{debug, error, info};
@@ -6,7 +10,7 @@ use tower_lsp::{
     Client,
 };
 
-use crate::{capabilities, document::DocumentCache};
+use self::document::DocumentCache;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
