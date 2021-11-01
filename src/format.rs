@@ -56,6 +56,9 @@ pub enum FormattedRule {
     Text {
         content: String,
     },
+    Tag {
+        name: String,
+    },
     Comment {
         content: String,
     },
@@ -118,10 +121,13 @@ impl FormattedCst {
             Rule::Category { name } => {
                 todo!()
             }
-            Rule::Text { content } => {
+            Rule::Text { content, tags } => {
                 todo!()
             }
             Rule::Comment { content } => {
+                todo!()
+            }
+            Rule::Tag { name } => {
                 todo!()
             }
             Rule::Error => {
@@ -174,6 +180,7 @@ impl FormattedCst {
             FormattedRule::Error => {
                 todo!()
             }
+            FormattedRule::Tag { name } => todo!(),
         }
     }
 }
