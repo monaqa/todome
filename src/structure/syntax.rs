@@ -5,6 +5,7 @@ use std::{collections::HashMap, fmt::Display};
 use anyhow::*;
 use chrono::NaiveDate;
 use itertools::Itertools;
+use log::info;
 use regex::Regex;
 use tower_lsp::lsp_types::Url;
 use tree_sitter::{Node, Parser, Point};
@@ -94,11 +95,25 @@ impl Cst {
 
             "task" => {
                 let status = Cst::child_by_field_name("status", node, content)?.map(Box::new);
-                let meta = Cst::collect_children_by_field_name("node", node, content)?;
+                let meta = if let Some(node) = node.child_by_field_name("meta") {
+                    let mut cursor = node.walk();
+                    node.children(&mut cursor)
+                        .map(|node| Cst::parse_node(&node, content))
+                        .try_collect()?
+                } else {
+                    vec![]
+                };
                 let text = Cst::child_by_field_name("text", node, content)?
                     .ok_or_else(|| anyhow!("Cannot find 'text' field in task."))?;
                 let text = Box::new(text);
-                let children = Cst::collect_children_by_field_name("children", node, content)?;
+                let children = if let Some(node) = node.child_by_field_name("children") {
+                    let mut cursor = node.walk();
+                    node.children(&mut cursor)
+                        .map(|node| Cst::parse_node(&node, content))
+                        .try_collect()?
+                } else {
+                    vec![]
+                };
                 Task {
                     status,
                     meta,
@@ -110,8 +125,22 @@ impl Cst {
 
             "header" => {
                 let status = Cst::child_by_field_name("status", node, content)?.map(Box::new);
-                let meta = Cst::collect_children_by_field_name("node", node, content)?;
-                let children = Cst::collect_children_by_field_name("children", node, content)?;
+                let meta = if let Some(node) = node.child_by_field_name("meta") {
+                    let mut cursor = node.walk();
+                    node.children(&mut cursor)
+                        .map(|node| Cst::parse_node(&node, content))
+                        .try_collect()?
+                } else {
+                    vec![]
+                };
+                let children = if let Some(node) = node.child_by_field_name("children") {
+                    let mut cursor = node.walk();
+                    node.children(&mut cursor)
+                        .map(|node| Cst::parse_node(&node, content))
+                        .try_collect()?
+                } else {
+                    vec![]
+                };
                 Header {
                     status,
                     meta,
@@ -187,7 +216,19 @@ impl Cst {
                 Tag { name }.into()
             }
 
-            _ => unreachable!(),
+            "ERROR" => {
+                return Ok(Cst {
+                    range,
+                    rule: Rule::Error,
+                })
+            }
+
+            "comment" => {
+                let content = substr.to_owned();
+                Comment { content }.into()
+            }
+
+            s => unreachable!("rule name: {}", s),
         };
         Ok(Cst { range, rule })
     }
@@ -372,16 +413,17 @@ impl Cst {
 
 #[derive(Debug, Clone, Default)]
 pub struct Context {
-    explicit_status: Vec<StatusKind>,
-    explicit_priority: Vec<String>,
-    explicit_keyval: HashMap<String, String>,
-    explicit_due: Vec<NaiveDate>,
-    categories: Vec<String>,
+    pub explicit_status: Vec<StatusKind>,
+    pub explicit_priority: Vec<String>,
+    pub explicit_keyval: HashMap<String, String>,
+    pub explicit_due: Vec<NaiveDate>,
+    pub categories: Vec<String>,
 }
 
 impl Context {
     fn with_cst(&self, cst: &Cst) -> Context {
         match &cst.rule {
+            Rule::SourceFile(_) => Context::default(),
             Rule::Task(Task { status, meta, .. }) => {
                 let mut context = self.clone();
                 if let Some(status) = status {
@@ -424,7 +466,8 @@ impl Context {
                 }
                 context
             }
-            _ => unreachable!(),
+            Rule::Error | Rule::Comment(_) => self.clone(),
+            rule => unreachable!("rule: {}", rule.name()),
         }
     }
 }
@@ -679,7 +722,7 @@ pub struct Comment {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusKind {
     Todo,
     Doing,
