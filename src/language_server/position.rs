@@ -14,7 +14,7 @@ use itertools::Itertools;
 use tower_lsp::lsp_types::Position;
 use tree_sitter::Point;
 
-use super::document::Document;
+use crate::structure::syntax::Document;
 
 /// Document が与えられた上での usize との相互変換。
 pub trait ConvertBetweenBytes: Sized {
@@ -28,7 +28,7 @@ pub trait ConvertBetweenBytes: Sized {
 
 impl ConvertBetweenBytes for Point {
     fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self> {
-        if bytepos > document.body().len() {
+        if bytepos > document.text().len() {
             return None;
         }
         let row = match document.lines().binary_search(&bytepos) {
@@ -44,7 +44,7 @@ impl ConvertBetweenBytes for Point {
         let idxline = document.lines().get(row)?;
         let max_idx = match document.lines().get(row + 1) {
             Some(idx) => *idx,
-            None => document.body().len(),
+            None => document.text().len(),
         };
         if (*idxline + column) < max_idx {
             Some(*idxline + column)
@@ -56,7 +56,7 @@ impl ConvertBetweenBytes for Point {
 
 impl ConvertBetweenBytes for Position {
     fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self> {
-        if bytepos > document.body().len() {
+        if bytepos > document.text().len() {
             return None;
         }
         let row = match document.lines().binary_search(&bytepos) {
@@ -64,7 +64,7 @@ impl ConvertBetweenBytes for Position {
             Err(i) => i - 1,
         };
         let bytes_startline = document.lines()[row];
-        let text = &document.body()[bytes_startline..bytepos];
+        let text = &document.text()[bytes_startline..bytepos];
         let character = text.encode_utf16().collect_vec().len();
         Some(Position {
             line: row as u32,
@@ -80,8 +80,8 @@ impl ConvertBetweenBytes for Position {
             let end = *document
                 .lines()
                 .get(line as usize + 1)
-                .unwrap_or(&document.body().len());
-            &document.body()[start..end]
+                .unwrap_or(&document.text().len());
+            &document.text()[start..end]
         };
         let vec_utf16 = text.encode_utf16().take(character as usize).collect_vec();
         let text = String::from_utf16_lossy(&vec_utf16);

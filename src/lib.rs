@@ -1,5 +1,5 @@
 pub mod language_server;
-pub mod parser;
+pub mod structure;
 
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()

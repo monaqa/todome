@@ -1,15 +1,32 @@
 //! 構文解析の結果を格納する構文木の要素。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use anyhow::*;
 use chrono::NaiveDate;
 use itertools::Itertools;
 use regex::Regex;
+use tower_lsp::lsp_types::Url;
 use tree_sitter::{Node, Parser, Point};
 
 use super::position::TextRange;
 
+#[derive(Debug, Clone, Default)]
+pub struct DocumentCache(HashMap<Url, Document>);
+
+impl DocumentCache {
+    pub fn register_or_update(&mut self, url: &Url, text: String) -> Result<&Document> {
+        let document = Document::parse(text)?;
+        self.0.insert(url.to_owned(), document);
+        Ok(self.0.get(url).unwrap())
+    }
+
+    pub fn get(&self, key: &Url) -> Option<&Document> {
+        self.0.get(key)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Document {
     text: String,
     lines: Vec<usize>,
@@ -47,9 +64,11 @@ impl Document {
         lines.extend(text.match_indices('\n').map(|(p, _)| p + 1));
         Ok(Self { text, lines, root })
     }
+}
 
-    pub fn stringify(&self) -> String {
-        self.root().stringify(0, self)
+impl Display for Document {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.root().stringify(0, self))
     }
 }
 
@@ -252,7 +271,7 @@ impl Cst {
             .get_children()
             .unwrap_or_default()
             .into_iter()
-            .map(|cst| cst.search_aux(&predicate))
+            .map(|cst| cst.search_aux(predicate))
             .concat();
         if predicate(self) {
             csts.push(self)
@@ -260,7 +279,7 @@ impl Cst {
         csts
     }
 
-    pub fn search_task<F>(&self, context: &Context, predicate: F) -> Vec<&Cst>
+    pub fn search_task<F>(&self, predicate: F) -> Vec<&Cst>
     where
         F: Fn(&Context) -> bool,
     {
@@ -580,7 +599,7 @@ impl From<Comment> for Rule {
 }
 
 impl Rule {
-    fn name(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match &self {
             Rule::SourceFile(_) => "source_file",
             Rule::Task(_) => "task",
