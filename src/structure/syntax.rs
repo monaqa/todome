@@ -77,6 +77,8 @@ impl Display for Document {
 pub struct Cst {
     pub range: TextRange,
     pub rule: Rule,
+    pub comments: Vec<Cst>,
+    pub errors: Vec<Cst>,
 }
 
 impl Cst {
@@ -85,6 +87,20 @@ impl Cst {
         let substr = {
             let range = TextRange::from_node(node);
             range.get_text(content)
+        };
+        let errors = {
+            let mut cursor = node.walk();
+            node.children(&mut cursor)
+                .filter(|node| node.is_error())
+                .map(|node| Cst::parse_node(&node, content))
+                .try_collect()?
+        };
+        let comments = {
+            let mut cursor = node.walk();
+            node.children(&mut cursor)
+                .filter(|node| node.kind() == "comment")
+                .map(|node| Cst::parse_node(&node, content))
+                .try_collect()?
         };
 
         let rule = match node.kind() {
@@ -217,10 +233,13 @@ impl Cst {
             }
 
             "ERROR" => {
+                info!("error");
                 return Ok(Cst {
                     range,
                     rule: Rule::Error,
-                })
+                    comments: vec![],
+                    errors: vec![],
+                });
             }
 
             "comment" => {
@@ -230,7 +249,12 @@ impl Cst {
 
             s => unreachable!("rule name: {}", s),
         };
-        Ok(Cst { range, rule })
+        Ok(Cst {
+            range,
+            rule,
+            comments,
+            errors,
+        })
     }
 
     fn collect_children(node: &Node, content: &str) -> Result<Vec<Cst>> {
@@ -258,8 +282,9 @@ impl Cst {
 }
 
 impl Cst {
-    pub fn get_children(&self) -> Option<Vec<&Cst>> {
-        let v = match &self.rule {
+    /// すべての子要素を取得する。
+    pub fn get_children(&self, include_error: bool, include_comment: bool) -> Vec<&Cst> {
+        let mut v = match &self.rule {
             Rule::SourceFile(SourceFile { children }) => children.iter().collect(),
             Rule::Task(Task {
                 status,
@@ -290,29 +315,34 @@ impl Cst {
                 v
             }
             Rule::Text(Text { tags, .. }) => tags.iter().collect(),
-            _ => return None,
+            _ => vec![],
         };
-        Some(v)
+        if include_error {
+            v.extend(self.errors.iter());
+        }
+        if include_comment {
+            v.extend(self.comments.iter());
+        }
+        v
     }
 
-    pub fn search<F>(&self, predicate: F) -> Vec<&Cst>
+    pub fn search<F>(&self, predicate: F, include_error: bool, include_comment: bool) -> Vec<&Cst>
     where
         F: Fn(&Cst) -> bool,
     {
-        let mut v = self.search_aux(&predicate);
+        let mut v = self.search_aux(&predicate, include_error, include_comment);
         v.reverse();
         v
     }
 
-    fn search_aux<F>(&self, predicate: &F) -> Vec<&Cst>
+    fn search_aux<F>(&self, predicate: &F, include_error: bool, include_comment: bool) -> Vec<&Cst>
     where
         F: Fn(&Cst) -> bool,
     {
         let mut csts = self
-            .get_children()
-            .unwrap_or_default()
+            .get_children(include_error, include_comment)
             .into_iter()
-            .map(|cst| cst.search_aux(predicate))
+            .map(|cst| cst.search_aux(predicate, include_error, include_comment))
             .concat();
         if predicate(self) {
             csts.push(self)
@@ -364,8 +394,7 @@ impl Cst {
         }
 
         let cst = self
-            .get_children()
-            .unwrap_or_default()
+            .get_children(true, true)
             .into_iter()
             .find(|cst| cst.range.includes(cursor));
         let mut v = cst
@@ -403,7 +432,7 @@ impl Cst {
             unreachable!()
         }
         s.push('\n');
-        for child in self.get_children().unwrap_or_default() {
+        for child in self.get_children(true, true) {
             let text = child.stringify(indent + 1, document);
             s.push_str(&text);
         }
