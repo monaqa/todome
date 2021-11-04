@@ -1,5 +1,7 @@
 //! 構文解析の結果を格納する構文木の要素。
 
+use std::collections::HashMap;
+
 use anyhow::*;
 use chrono::NaiveDate;
 use itertools::Itertools;
@@ -8,14 +10,14 @@ use tree_sitter::{Node, Parser, Point};
 
 use super::position::TextRange;
 
-pub struct DocumentSyntax {
+pub struct Document {
     text: String,
     lines: Vec<usize>,
     root: Cst,
 }
 
 /// getter, setter
-impl DocumentSyntax {
+impl Document {
     /// Get a reference to the document's lines.
     pub fn lines(&self) -> &[usize] {
         self.lines.as_ref()
@@ -32,8 +34,8 @@ impl DocumentSyntax {
     }
 }
 
-impl DocumentSyntax {
-    pub fn parse(text: String) -> Result<DocumentSyntax> {
+impl Document {
+    pub fn parse(text: String) -> Result<Document> {
         let mut parser = Parser::new();
         parser.set_language(tree_sitter_todome::language())?;
         let tree = parser
@@ -258,6 +260,36 @@ impl Cst {
         csts
     }
 
+    pub fn search_task<F>(&self, context: &Context, predicate: F) -> Vec<&Cst>
+    where
+        F: Fn(&Context) -> bool,
+    {
+        let context = Context::default();
+        self.search_task_aux(&context, &predicate)
+    }
+
+    fn search_task_aux<F>(&self, context: &Context, predicate: &F) -> Vec<&Cst>
+    where
+        F: Fn(&Context) -> bool,
+    {
+        let context = context.with_cst(self);
+        let mut csts = vec![];
+        if predicate(&context) {
+            csts.push(self);
+        }
+        let children: &[_] = match &self.rule {
+            Rule::SourceFile(SourceFile { children }) => children,
+            Rule::Header(Header { children, .. }) => children,
+            Rule::Task(Task { children, .. }) => children,
+            _ => &[],
+        };
+        let iter = children
+            .iter()
+            .map(|cst| cst.search_task_aux(&context, predicate));
+        csts.extend(iter.concat());
+        csts
+    }
+
     // root_cst.(&cst) で、root_cst を始祖とするすべての CST のうち、
     // cst の祖先に相当する CST の列を返す。
     //
@@ -283,7 +315,15 @@ impl Cst {
         v
     }
 
-    fn stringify(&self, indent: usize, document: &DocumentSyntax) -> String {
+    /// 自身もしくは子のうち、範囲が range と一致する Cst を集める。
+    pub fn get_csts_on_range(&self, range: TextRange) -> Vec<&Cst> {
+        self.get_csts_on_cursor(range.start)
+            .into_iter()
+            .filter(|cst| cst.range == range)
+            .collect_vec()
+    }
+
+    fn stringify(&self, indent: usize, document: &Document) -> String {
         let substr = self.range.get_text(document.text());
         let mut s = String::new();
         let indent_str = " ".repeat(indent * 2);
@@ -311,6 +351,65 @@ impl Cst {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Context {
+    explicit_status: Vec<StatusKind>,
+    explicit_priority: Vec<String>,
+    explicit_keyval: HashMap<String, String>,
+    explicit_due: Vec<NaiveDate>,
+    categories: Vec<String>,
+}
+
+impl Context {
+    fn with_cst(&self, cst: &Cst) -> Context {
+        match &cst.rule {
+            Rule::Task(Task { status, meta, .. }) => {
+                let mut context = self.clone();
+                if let Some(status) = status {
+                    let status_kind = status.rule.as_status().unwrap().kind;
+                    context.explicit_status.push(status_kind);
+                };
+                for cst in meta {
+                    match &cst.rule {
+                        Rule::Priority(Priority { value }) => {
+                            context.explicit_priority.push(value.clone());
+                        }
+                        Rule::Due(Due { value }) => context.explicit_due.push(*value),
+                        Rule::KeyVal(KeyVal { key, value }) => {
+                            context.explicit_keyval.insert(key.clone(), value.clone());
+                        }
+                        Rule::Category(Category { name }) => context.categories.push(name.clone()),
+                        _ => unreachable!(),
+                    }
+                }
+                context
+            }
+            Rule::Header(Header { status, meta, .. }) => {
+                let mut context = self.clone();
+                if let Some(status) = status {
+                    let status_kind = status.rule.as_status().unwrap().kind;
+                    context.explicit_status.push(status_kind);
+                };
+                for cst in meta {
+                    match &cst.rule {
+                        Rule::Priority(Priority { value }) => {
+                            context.explicit_priority.push(value.clone());
+                        }
+                        Rule::Due(Due { value }) => context.explicit_due.push(*value),
+                        Rule::KeyVal(KeyVal { key, value }) => {
+                            context.explicit_keyval.insert(key.clone(), value.clone());
+                        }
+                        Rule::Category(Category { name }) => context.categories.push(name.clone()),
+                        _ => unreachable!(),
+                    }
+                }
+                context
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Rule {
     SourceFile(SourceFile),
@@ -328,21 +427,99 @@ pub enum Rule {
 }
 
 impl Rule {
-    fn name(&self) -> &'static str {
-        match &self {
-            Rule::SourceFile(_) => "source_file",
-            Rule::Task(_) => "task",
-            Rule::Header(_) => "header",
-            Rule::Status(_) => "status",
-            Rule::Priority(_) => "priority",
-            Rule::Due(_) => "due",
-            Rule::KeyVal(_) => "keyval",
-            Rule::Category(_) => "category",
-            Rule::Text(_) => "text",
-            Rule::Tag(_) => "tag",
-            Rule::Comment(_) => "comment",
-            Rule::Error => "ERROR",
+    pub fn as_source_file(&self) -> Option<&SourceFile> {
+        if let Self::SourceFile(v) = self {
+            Some(v)
+        } else {
+            None
         }
+    }
+
+    pub fn as_task(&self) -> Option<&Task> {
+        if let Self::Task(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_header(&self) -> Option<&Header> {
+        if let Self::Header(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_status(&self) -> Option<&Status> {
+        if let Self::Status(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_priority(&self) -> Option<&Priority> {
+        if let Self::Priority(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_due(&self) -> Option<&Due> {
+        if let Self::Due(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_key_val(&self) -> Option<&KeyVal> {
+        if let Self::KeyVal(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_category(&self) -> Option<&Category> {
+        if let Self::Category(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_text(&self) -> Option<&Text> {
+        if let Self::Text(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_tag(&self) -> Option<&Tag> {
+        if let Self::Tag(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_comment(&self) -> Option<&Comment> {
+        if let Self::Comment(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if the rule is [`Error`].
+    ///
+    /// [`Error`]: Rule::Error
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Error)
     }
 }
 
@@ -399,6 +576,25 @@ impl From<Tag> for Rule {
 impl From<Comment> for Rule {
     fn from(v: Comment) -> Self {
         Self::Comment(v)
+    }
+}
+
+impl Rule {
+    fn name(&self) -> &'static str {
+        match &self {
+            Rule::SourceFile(_) => "source_file",
+            Rule::Task(_) => "task",
+            Rule::Header(_) => "header",
+            Rule::Status(_) => "status",
+            Rule::Priority(_) => "priority",
+            Rule::Due(_) => "due",
+            Rule::KeyVal(_) => "keyval",
+            Rule::Category(_) => "category",
+            Rule::Text(_) => "text",
+            Rule::Tag(_) => "tag",
+            Rule::Comment(_) => "comment",
+            Rule::Error => "ERROR",
+        }
     }
 }
 

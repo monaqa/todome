@@ -1,9 +1,9 @@
-use super::syntax::DocumentSyntax;
+use super::syntax::Document;
 use itertools::Itertools;
 use tower_lsp::lsp_types::Position;
 use tree_sitter::{Node, Point};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextRange {
     pub start: usize,
     pub end: usize,
@@ -22,10 +22,7 @@ impl TextRange {
         TextRange::new(node.start_byte(), node.end_byte())
     }
 
-    pub fn convert_into<T: ConvertBetweenBytes>(
-        &self,
-        document: &DocumentSyntax,
-    ) -> Option<(T, T)> {
+    pub fn convert_into<T: ConvertBetweenBytes>(&self, document: &Document) -> Option<(T, T)> {
         let start = T::try_from_bytes(self.start, document)?;
         let end = T::try_from_bytes(self.end, document)?;
         Some((start, end))
@@ -38,16 +35,16 @@ impl TextRange {
 
 /// DocumentSyntax が与えられた上での usize との相互変換。
 pub trait ConvertBetweenBytes: Sized {
-    fn try_from_bytes(bytepos: usize, document: &DocumentSyntax) -> Option<Self>;
-    fn try_into_bytes(self, document: &DocumentSyntax) -> Option<usize>;
+    fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self>;
+    fn try_into_bytes(self, document: &Document) -> Option<usize>;
 
-    fn try_convert<T: ConvertBetweenBytes>(self, document: &DocumentSyntax) -> Option<T> {
+    fn try_convert<T: ConvertBetweenBytes>(self, document: &Document) -> Option<T> {
         T::try_from_bytes(self.try_into_bytes(document)?, document)
     }
 }
 
 impl ConvertBetweenBytes for Point {
-    fn try_from_bytes(bytepos: usize, document: &DocumentSyntax) -> Option<Self> {
+    fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self> {
         if bytepos > document.text().len() {
             return None;
         }
@@ -59,7 +56,7 @@ impl ConvertBetweenBytes for Point {
         Some(Point { row, column })
     }
 
-    fn try_into_bytes(self, document: &DocumentSyntax) -> Option<usize> {
+    fn try_into_bytes(self, document: &Document) -> Option<usize> {
         let Point { row, column } = self;
         let idxline = document.lines().get(row)?;
         let max_idx = match document.lines().get(row + 1) {
@@ -75,7 +72,7 @@ impl ConvertBetweenBytes for Point {
 }
 
 impl ConvertBetweenBytes for Position {
-    fn try_from_bytes(bytepos: usize, document: &DocumentSyntax) -> Option<Self> {
+    fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self> {
         if bytepos > document.text().len() {
             return None;
         }
@@ -92,7 +89,7 @@ impl ConvertBetweenBytes for Position {
         })
     }
 
-    fn try_into_bytes(self, document: &DocumentSyntax) -> Option<usize> {
+    fn try_into_bytes(self, document: &Document) -> Option<usize> {
         let Position { line, character } = self;
         // position が属する行のテキストを取り出す。
         let start = *document.lines().get(line as usize)?;
