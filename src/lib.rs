@@ -1,9 +1,6 @@
-pub mod capabilities;
-pub mod document;
 pub mod format;
 pub mod language_server;
-pub mod parser;
-pub mod position;
+pub mod structure;
 
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()

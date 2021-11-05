@@ -1,3 +1,7 @@
+mod capabilities;
+mod diagnostics;
+mod position;
+
 use std::sync::Arc;
 
 use log::{debug, error, info};
@@ -6,7 +10,7 @@ use tower_lsp::{
     Client,
 };
 
-use crate::{capabilities, document::DocumentCache};
+use crate::structure::syntax::DocumentCache;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
@@ -20,6 +24,7 @@ impl LanguageServer {
         &self.0
     }
 }
+
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
     async fn initialize(
@@ -128,7 +133,7 @@ impl Inner {
         info!("called did_save");
         let url = params.text_document.uri;
         if let Some(document) = self.document_cache.get(&url) {
-            debug!("{}", document.display_cst());
+            debug!("{}", document);
             let diags = document.get_diagnostics();
             self.client.publish_diagnostics(url, diags, None).await;
         }
