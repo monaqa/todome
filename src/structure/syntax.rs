@@ -413,6 +413,10 @@ impl Cst {
             .collect_vec()
     }
 
+    pub fn to_string(&self, document: &Document) -> String {
+        self.stringify(0, document)
+    }
+
     fn stringify(&self, indent: usize, document: &Document) -> String {
         let substr = self.range.get_text(document.text());
         let mut s = String::new();
@@ -491,7 +495,8 @@ impl Context {
                             context.explicit_keyval.insert(key.clone(), value.clone());
                         }
                         Rule::Category(Category { name }) => context.categories.push(name.clone()),
-                        _ => unreachable!(),
+                        Rule::Error | Rule::Comment(_) => continue,
+                        r => unreachable!("{}", r.name()),
                     }
                 }
                 context

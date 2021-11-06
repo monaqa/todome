@@ -1,16 +1,17 @@
-mod capabilities;
-mod diagnostics;
-mod position;
-
 use std::sync::Arc;
 
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tower_lsp::{
-    lsp_types::{InitializeResult, ServerInfo},
+    jsonrpc::ErrorCode,
+    lsp_types::{CompletionList, CompletionResponse, InitializeResult, ServerInfo},
     Client,
 };
 
 use crate::structure::syntax::DocumentCache;
+
+mod capabilities;
+mod completion;
+mod diagnostics;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
@@ -52,6 +53,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     async fn did_close(&self, params: tower_lsp::lsp_types::DidCloseTextDocumentParams) {
         self.inner().lock().await.did_close(params).await;
+    }
+    async fn completion(
+        &self,
+        params: tower_lsp::lsp_types::CompletionParams,
+    ) -> tower_lsp::jsonrpc::Result<Option<tower_lsp::lsp_types::CompletionResponse>> {
+        self.inner().lock().await.completion(params).await
     }
 }
 
@@ -141,5 +148,26 @@ impl Inner {
 
     async fn did_close(&mut self, _params: tower_lsp::lsp_types::DidCloseTextDocumentParams) {
         info!("called did_close");
+    }
+
+    async fn completion(
+        &mut self,
+        params: tower_lsp::lsp_types::CompletionParams,
+    ) -> tower_lsp::jsonrpc::Result<Option<tower_lsp::lsp_types::CompletionResponse>> {
+        let url = params.text_document_position.text_document.uri.clone();
+        if let Some(document) = self.document_cache.get(&url) {
+            let completions =
+                document
+                    .get_completion(&params)
+                    .map_err(|e| tower_lsp::jsonrpc::Error {
+                        code: ErrorCode::InternalError,
+                        message: format!("{}", e),
+                        data: None,
+                    })?;
+            Ok(Some(CompletionResponse::Array(completions)))
+        } else {
+            warn!("Document not found.");
+            Ok(None)
+        }
     }
 }

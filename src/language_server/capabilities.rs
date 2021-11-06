@@ -1,5 +1,6 @@
 use tower_lsp::lsp_types::{
-    ClientCapabilities, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    ClientCapabilities, CompletionOptions, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind,
 };
 
 pub fn server_capabilities(_client_capabilities: &ClientCapabilities) -> ServerCapabilities {
@@ -7,7 +8,10 @@ pub fn server_capabilities(_client_capabilities: &ClientCapabilities) -> ServerC
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::Full)),
         selection_range_provider: None,
         hover_provider: None,
-        completion_provider: None,
+        completion_provider: Some(CompletionOptions {
+            trigger_characters: Some(vec!["[".to_owned(), "@".to_owned(), "(".to_owned()]),
+            ..CompletionOptions::default()
+        }),
         signature_help_provider: None,
         definition_provider: None,
         type_definition_provider: None,
