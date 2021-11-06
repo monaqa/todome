@@ -122,7 +122,8 @@ impl TodomeLine {
                 StatusKind::Todo => "+ ",
                 StatusKind::Doing => "* ",
                 StatusKind::Done => "- ",
-                StatusKind::Cancelled => "/ ",
+                StatusKind::Cancelled => "= ",
+                StatusKind::Other => "/ ",
             })
             .unwrap_or_default();
 

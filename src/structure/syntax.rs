@@ -190,6 +190,10 @@ impl Cst {
                         kind: StatusKind::Cancelled,
                     }
                     .into(),
+                    "status_other" => Status {
+                        kind: StatusKind::Other,
+                    }
+                    .into(),
                     _ => Rule::Error,
                 }
             }
@@ -754,4 +758,5 @@ pub enum StatusKind {
     Doing,
     Done,
     Cancelled,
+    Other,
 }
