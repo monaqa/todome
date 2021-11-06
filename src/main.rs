@@ -16,6 +16,7 @@ struct Opts {
 
 #[derive(Debug, Clone, StructOpt)]
 enum SubCmd {
+    #[structopt(alias = "fmt")]
     Format {
         /// フォーマットの対象となるファイル。
         #[structopt(short, long)]
