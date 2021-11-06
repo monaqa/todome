@@ -50,6 +50,10 @@ impl Document {
     pub fn root(&self) -> &Cst {
         &self.root
     }
+
+    pub fn into_cst(self) -> Cst {
+        self.root
+    }
 }
 
 impl Document {

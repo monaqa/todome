@@ -4,8 +4,8 @@ use anyhow::*;
 
 use structopt::StructOpt;
 use todome::{
-    format::{FormattedCst, FormattingOption},
-    parser::Cst,
+    format::format_lines,
+    structure::syntax::{Cst, Document},
 };
 
 #[derive(Debug, Clone, StructOpt)]
@@ -38,10 +38,7 @@ fn main() -> Result<()> {
                 buf
             };
 
-            let cst = Cst::parse_source_file(&text)?;
-            let formatted_cst = FormattedCst::from_cst(&cst);
-            let opt = FormattingOption::new();
-            let formatted = formatted_cst.to_formatted_string(&opt);
+            let formatted = format_lines(&text)?;
 
             if inplace && input.is_some() {
                 let input = input.as_ref().unwrap();
