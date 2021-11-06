@@ -1,8 +1,6 @@
-use std::ops::Deref;
-
 use crate::structure::syntax::{
-    Category, Comment, Cst, Document, Due, Header, KeyVal, Priority, Rule, SourceFile, StatusKind,
-    Task, Text,
+    Category, Comment, Document, Due, Header, KeyVal, Priority, Rule, SourceFile, StatusKind, Task,
+    Text,
 };
 use anyhow::*;
 use itertools::Itertools;
@@ -10,7 +8,7 @@ use regex::Regex;
 
 /// 与えられたドキュメントをフォーマットして文字列に変換する。
 pub fn format_lines(text: &str) -> Result<String> {
-    let mut lines = text.lines();
+    let lines = text.lines();
     let mut todome_lines = vec![];
 
     for line in lines {

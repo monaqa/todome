@@ -276,13 +276,6 @@ impl Cst {
         };
         Ok(result)
     }
-
-    fn collect_children_by_field_name(name: &str, node: &Node, content: &str) -> Result<Vec<Cst>> {
-        let mut cursor = node.walk();
-        node.children_by_field_name(name, &mut cursor)
-            .map(|node| Cst::parse_node(&node, content))
-            .try_collect()
-    }
 }
 
 impl Cst {

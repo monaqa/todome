@@ -3,10 +3,7 @@ use std::{io::Read, path::PathBuf};
 use anyhow::*;
 
 use structopt::StructOpt;
-use todome::{
-    format::format_lines,
-    structure::syntax::{Cst, Document},
-};
+use todome::format::format_lines;
 
 #[derive(Debug, Clone, StructOpt)]
 struct Opts {

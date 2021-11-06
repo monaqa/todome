@@ -1,7 +1,7 @@
 use chrono::{Local, NaiveDate};
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 
-use crate::structure::syntax::{Document, Due, Rule, StatusKind};
+use crate::structure::syntax::{Document, StatusKind};
 
 impl Document {
     pub fn get_diagnostics(&self) -> Vec<Diagnostic> {
