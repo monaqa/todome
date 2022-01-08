@@ -1,63 +1,53 @@
 use super::syntax::Document;
 use itertools::Itertools;
 use tower_lsp::lsp_types::Position;
-use tree_sitter::{Node, Point};
+use tree_sitter::Point;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TextRange {
-    pub start: usize,
-    pub end: usize,
+pub trait PosInto<T> {
+    fn try_pos_into(self, document: &Document) -> Option<T>;
 }
 
-impl TextRange {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
+pub trait PosFrom<T>: Sized {
+    fn try_pos_from(pos: T, document: &Document) -> Option<Self>;
+}
 
-    pub fn get_text(self, text: &str) -> &str {
-        &text[self.start..self.end]
-    }
-
-    pub fn from_node(node: &Node) -> Self {
-        TextRange::new(node.start_byte(), node.end_byte())
-    }
-
-    pub fn convert_into<T: ConvertBetweenBytes>(&self, document: &Document) -> Option<(T, T)> {
-        let start = T::try_from_bytes(self.start, document)?;
-        let end = T::try_from_bytes(self.end, document)?;
-        Some((start, end))
-    }
-
-    pub fn includes(&self, cursor: usize) -> bool {
-        self.start <= cursor && cursor <= self.end
+impl<T, U> PosInto<T> for U
+where
+    T: PosFrom<U>,
+{
+    fn try_pos_into(self, document: &Document) -> Option<T> {
+        T::try_pos_from(self, document)
     }
 }
 
-/// DocumentSyntax が与えられた上での usize との相互変換。
-pub trait ConvertBetweenBytes: Sized {
-    fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self>;
-    fn try_into_bytes(self, document: &Document) -> Option<usize>;
-
-    fn try_convert<T: ConvertBetweenBytes>(self, document: &Document) -> Option<T> {
-        T::try_from_bytes(self.try_into_bytes(document)?, document)
+impl<S, U> PosFrom<S> for U
+where
+    S: PosInto<usize>,
+    U: PosFrom<usize>,
+{
+    fn try_pos_from(pos: S, document: &Document) -> Option<Self> {
+        let t = pos.try_pos_into(document)?;
+        U::try_pos_from(t, document)
     }
 }
 
-impl ConvertBetweenBytes for Point {
-    fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self> {
-        if bytepos > document.text().len() {
+impl PosFrom<usize> for Point {
+    fn try_pos_from(pos: usize, document: &Document) -> Option<Self> {
+        if pos > document.text().len() {
             return None;
         }
-        let row = match document.lines().binary_search(&bytepos) {
+        let row = match document.lines().binary_search(&pos) {
             Ok(i) => i,
             Err(i) => i - 1,
         };
-        let column = bytepos - document.lines()[row];
+        let column = pos - document.lines()[row];
         Some(Point { row, column })
     }
+}
 
-    fn try_into_bytes(self, document: &Document) -> Option<usize> {
-        let Point { row, column } = self;
+impl PosFrom<Point> for usize {
+    fn try_pos_from(pos: Point, document: &Document) -> Option<Self> {
+        let Point { row, column } = pos;
         let idxline = document.lines().get(row)?;
         let max_idx = match document.lines().get(row + 1) {
             Some(idx) => *idx,
@@ -71,26 +61,28 @@ impl ConvertBetweenBytes for Point {
     }
 }
 
-impl ConvertBetweenBytes for Position {
-    fn try_from_bytes(bytepos: usize, document: &Document) -> Option<Self> {
-        if bytepos > document.text().len() {
+impl PosFrom<usize> for Position {
+    fn try_pos_from(pos: usize, document: &Document) -> Option<Self> {
+        if pos > document.text().len() {
             return None;
         }
-        let row = match document.lines().binary_search(&bytepos) {
+        let row = match document.lines().binary_search(&pos) {
             Ok(i) => i,
             Err(i) => i - 1,
         };
         let bytes_startline = document.lines()[row];
-        let text = &document.text()[bytes_startline..bytepos];
+        let text = &document.text()[bytes_startline..pos];
         let character = text.encode_utf16().collect_vec().len();
         Some(Position {
             line: row as u32,
             character: character as u32,
         })
     }
+}
 
-    fn try_into_bytes(self, document: &Document) -> Option<usize> {
-        let Position { line, character } = self;
+impl PosFrom<Position> for usize {
+    fn try_pos_from(pos: Position, document: &Document) -> Option<Self> {
+        let Position { line, character } = pos;
         // position が属する行のテキストを取り出す。
         let start = *document.lines().get(line as usize)?;
         let text = {
@@ -104,5 +96,22 @@ impl ConvertBetweenBytes for Position {
         let text = String::from_utf16_lossy(&vec_utf16);
         let column = text.len();
         Some(start + column)
+    }
+}
+
+impl PosFrom<tower_lsp::lsp_types::Range> for (usize, usize) {
+    fn try_pos_from(pos: tower_lsp::lsp_types::Range, document: &Document) -> Option<Self> {
+        let tower_lsp::lsp_types::Range { start, end } = pos;
+        let start = start.try_pos_into(document)?;
+        let end = end.try_pos_into(document)?;
+        Some((start, end))
+    }
+}
+
+impl PosFrom<(usize, usize)> for tower_lsp::lsp_types::Range {
+    fn try_pos_from(pos: (usize, usize), document: &Document) -> Option<Self> {
+        let start = pos.0.try_pos_into(document)?;
+        let end = pos.1.try_pos_into(document)?;
+        Some(tower_lsp::lsp_types::Range { start, end })
     }
 }

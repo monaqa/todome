@@ -1,7 +1,8 @@
 use chrono::{Local, NaiveDate};
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Range};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
+use tree_sitter_todome::syntax::ast::AstNode;
 
-use crate::structure::syntax::{Document, StatusKind};
+use crate::structure::{position::PosInto, syntax::Document};
 
 impl Document {
     pub fn get_diagnostics(&self) -> Vec<Diagnostic> {
@@ -16,49 +17,51 @@ impl Document {
 
     fn get_syntax_error(&self) -> Vec<Diagnostic> {
         self.root()
-            .search(|cst| cst.rule.name() == "ERROR", true, false)
+            .syntax()
+            .children_recursive()
             .into_iter()
-            .filter_map(|cst| {
-                let (start, end) = cst.range.convert_into(self)?;
-                let range = Range { start, end };
-                Some(Diagnostic {
-                    range,
-                    severity: Some(DiagnosticSeverity::Error),
-                    code: None,
-                    code_description: None,
-                    source: Some("todome".to_owned()),
-                    message: "Syntax error".to_owned(),
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                })
+            .filter_map(|n| {
+                if n.green().kind().as_str() == "ERROR" {
+                    let range = n.range().try_pos_into(self)?;
+                    Some(Diagnostic {
+                        range,
+                        severity: Some(DiagnosticSeverity::Error),
+                        code: None,
+                        code_description: None,
+                        source: Some("todome".to_owned()),
+                        message: "Syntax error".to_owned(),
+                        related_information: None,
+                        tags: None,
+                        data: None,
+                    })
+                } else {
+                    None
+                }
             })
             .collect()
     }
 
     fn get_overdue(&self, date: &NaiveDate) -> Vec<Diagnostic> {
         self.root()
-            .search_task(|context| {
-                // dbg!(context);
-                let is_done_or_cancel = context
-                    .explicit_status
-                    .last()
-                    .map(|status| *status == StatusKind::Done || *status == StatusKind::Cancelled)
+            .items_nested()
+            .filter(|item| item.as_task().is_some())
+            .filter(|item| {
+                let is_valid = item
+                    .scoped_statuses()
+                    .next()
+                    .map(|status| status.is_valid())
+                    .unwrap_or(true);
+                let is_overdue = item
+                    .scoped_dues()
+                    .next()
+                    .and_then(|due| due.try_as_date())
+                    .map(|due| due < *date)
                     .unwrap_or(false);
-                let is_due_today = context
-                    .explicit_due
-                    .last()
-                    .map(|due| due < date)
-                    .unwrap_or(false);
-                !is_done_or_cancel && is_due_today
+                is_valid && is_overdue
             })
-            .into_iter()
-            .filter_map(|cst| {
-                let task = cst.rule.as_task()?;
-                // タスクのテキスト部分だけをハイライトする（子タスクにはハイライトを付けない）
-                let (start, _) = cst.range.convert_into(self)?;
-                let (_, end) = task.text.range.convert_into(self)?;
-                let range = Range { start, end };
+            .filter_map(|item| {
+                let task = item.as_task()?;
+                let range = task.text()?.syntax().range().try_pos_into(self)?;
                 Some(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Error),
@@ -76,27 +79,25 @@ impl Document {
 
     fn get_due_today(&self, date: &NaiveDate) -> Vec<Diagnostic> {
         self.root()
-            .search_task(|context| {
-                // dbg!(context);
-                let is_done_or_cancel = context
-                    .explicit_status
-                    .last()
-                    .map(|status| *status == StatusKind::Done || *status == StatusKind::Cancelled)
+            .items_nested()
+            .filter(|item| item.as_task().is_some())
+            .filter(|item| {
+                let is_valid = item
+                    .scoped_statuses()
+                    .next()
+                    .map(|status| status.is_valid())
+                    .unwrap_or(true);
+                let is_due_today = item
+                    .scoped_dues()
+                    .next()
+                    .and_then(|due| due.try_as_date())
+                    .map(|due| due == *date)
                     .unwrap_or(false);
-                let is_due_today = context
-                    .explicit_due
-                    .last()
-                    .map(|due| due == date)
-                    .unwrap_or(false);
-                !is_done_or_cancel && is_due_today
+                is_valid && is_due_today
             })
-            .into_iter()
-            .filter_map(|cst| {
-                let task = cst.rule.as_task()?;
-                // タスクのテキスト部分だけをハイライトする（子タスクにはハイライトを付けない）
-                let (start, _) = cst.range.convert_into(self)?;
-                let (_, end) = task.text.range.convert_into(self)?;
-                let range = Range { start, end };
+            .filter_map(|item| {
+                let task = item.as_task()?;
+                let range = task.text()?.syntax().range().try_pos_into(self)?;
                 Some(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Warning),
