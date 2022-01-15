@@ -26,6 +26,7 @@ impl Document {
         if let Some(node) = nodes.get(0) {
             debug!("kind: {}", node.green().kind().as_str());
             if ["subtext", "memo"].contains(&node.green().kind().as_str()) {
+                debug!("returning ok");
                 return Ok(vec![]);
             }
         }
@@ -75,17 +76,18 @@ impl Document {
                 .unwrap()
         };
 
-        let categories: HashSet<Category> = self
+        let categories: HashSet<String> = self
             .root()
             .syntax()
             .children_recursive()
             .into_iter()
             .filter_map(Category::cast)
+            .map(|category| category.name())
             .collect();
         categories
             .into_iter()
             .map(|s| {
-                let new_text = format!("[{}]", s.name());
+                let new_text = format!("[{}]", s);
                 let edit = TextEdit {
                     range,
                     new_text: new_text.clone(),
@@ -131,16 +133,17 @@ impl Document {
                 .unwrap()
         };
 
-        let tags: HashSet<Tag> = self
+        let tags: HashSet<String> = self
             .root()
             .syntax()
             .children_recursive()
             .into_iter()
             .filter_map(Tag::cast)
+            .map(|tag| tag.name())
             .collect();
         tags.into_iter()
             .map(|s| {
-                let new_text = format!("@{}", s.name());
+                let new_text = format!("@{}", s);
                 let edit = TextEdit {
                     range,
                     new_text: new_text.clone(),

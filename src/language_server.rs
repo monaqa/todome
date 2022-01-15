@@ -164,6 +164,7 @@ impl Inner {
                         message: format!("{}", e),
                         data: None,
                     })?;
+            debug!("completions: {:#?}", completions);
             Ok(Some(CompletionResponse::Array(completions)))
         } else {
             warn!("Document not found.");
