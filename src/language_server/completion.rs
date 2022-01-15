@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use anyhow::*;
 use chrono::{Duration, Local};
-use tower_lsp::lsp_types::{CompletionItem, CompletionTextEdit, Position, Range, TextEdit};
+use log::debug;
+use tower_lsp::lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 use tree_sitter::Point;
 use tree_sitter_todome::syntax::ast::{AstNode, Category, Tag};
 
@@ -21,9 +22,10 @@ impl Document {
             }
             cursor.unwrap()
         };
-        let nodes = self.root().syntax().dig(cursor);
+        let nodes = self.root().syntax().dig(cursor - 1);
         if let Some(node) = nodes.get(0) {
-            if let "text" | "comment" = node.green().kind().as_str() {
+            debug!("kind: {}", node.green().kind().as_str());
+            if ["subtext", "memo"].contains(&node.green().kind().as_str()) {
                 return Ok(vec![]);
             }
         }
@@ -33,9 +35,7 @@ impl Document {
             .context
             .as_ref()
             .and_then(|ctx| ctx.trigger_character.as_deref());
-        let rule = nodes.get(0).map(|node| node.green().kind().as_str());
-
-        dbg!(&trigger_character, &rule);
+        let rule = nodes.get(1).map(|node| node.green().kind().as_str());
 
         let completions = match (trigger_character, rule) {
             (Some("["), _) | (_, Some("category")) => {

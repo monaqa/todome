@@ -1,4 +1,5 @@
 use chrono::{Local, NaiveDate};
+use log::debug;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
 use tree_sitter_todome::syntax::ast::AstNode;
 
