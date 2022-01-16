@@ -1,10 +1,7 @@
-use crate::structure::syntax::{
-    Category, Comment, Document, Due, Header, KeyVal, Priority, Rule, SourceFile, StatusKind, Task,
-    Text,
-};
 use anyhow::*;
 use itertools::Itertools;
 use regex::Regex;
+use tree_sitter_todome::syntax::ast::{Item, Memo, Meta, Priority, SourceFile, StatusKind, Text};
 
 /// 与えられたドキュメントをフォーマットして文字列に変換する。
 pub fn format_lines(text: &str) -> Result<String> {
@@ -26,8 +23,8 @@ pub fn format_lines(text: &str) -> Result<String> {
 pub struct TodomeLine {
     indent: usize,
     status: Option<StatusKind>,
-    meta: Vec<Rule>,
-    comment: Option<Comment>,
+    meta: Vec<Meta>,
+    memo: Option<Memo>,
     text: Option<Text>,
 }
 
@@ -37,79 +34,48 @@ impl TodomeLine {
         let caps = re.captures(line).unwrap();
         let indent = caps[0].len();
         let line = line.trim();
-        let cst = Document::parse(line.to_owned())?.into_cst();
-        let comment_source = cst
-            .comments
-            .get(0)
-            .map(|cst| cst.rule.as_comment().unwrap().clone());
 
-        let mut children = match cst.rule {
-            Rule::SourceFile(SourceFile { children }) => children,
-            r => unreachable!("Rule: {}", r.name()),
-        };
-        if children.is_empty() {
+        let source_file = SourceFile::parse(line.to_owned())?;
+        let item = source_file.items().next();
+        if item.is_none() {
             return Ok(TodomeLine {
                 indent,
                 status: None,
                 meta: vec![],
-                comment: None,
+                memo: None,
                 text: None,
             });
         }
-        let cst = children.swap_remove(0);
-
-        let todome_line = match cst.rule {
-            Rule::Task(Task {
-                status, meta, text, ..
-            }) => {
-                let status = status.map(|status| status.rule.as_status().unwrap().kind);
-                let meta = meta.iter().map(|cst| cst.rule.clone()).collect_vec();
-                let comment = comment_source.or_else(|| {
-                    cst.comments
-                        .get(0)
-                        .map(|cst| cst.rule.as_comment().unwrap().clone())
-                });
-                let text = Some(text.rule.as_text().unwrap().clone());
-                TodomeLine {
-                    indent,
-                    status,
-                    meta,
-                    comment,
-                    text,
-                }
-            }
-            Rule::Header(Header { status, meta, .. }) => {
-                let status = status.map(|status| status.rule.as_status().unwrap().kind);
-                let meta = meta.iter().map(|cst| cst.rule.clone()).collect_vec();
-                let comment = comment_source.or_else(|| {
-                    cst.comments
-                        .get(0)
-                        .map(|cst| cst.rule.as_comment().unwrap().clone())
-                });
-                TodomeLine {
-                    indent,
-                    status,
-                    meta,
-                    comment,
-                    text: None,
-                }
-            }
-            Rule::Comment(comment) => TodomeLine {
+        let item = item.unwrap();
+        let todome_line = match item {
+            Item::Task(task) => TodomeLine {
+                indent,
+                status: task.status().map(|s| s.kind()),
+                meta: task.meta().collect_vec(),
+                memo: task.memo(),
+                text: task.text(),
+            },
+            Item::Header(header) => TodomeLine {
+                indent,
+                status: header.status().map(|s| s.kind()),
+                meta: header.meta().collect_vec(),
+                memo: header.memo(),
+                text: None,
+            },
+            Item::Memo(memo) => TodomeLine {
                 indent,
                 status: None,
                 meta: vec![],
-                comment: Some(comment),
+                memo: Some(memo),
                 text: None,
             },
-            Rule::Error => return Err(anyhow!("Syntax Error")),
-            r => unreachable!("Rule: {}", r.name()),
         };
 
         Ok(todome_line)
     }
 
     fn sort_meta(&mut self) {
-        self.meta.sort_by_key(rule_ord);
+        self.meta.sort_by_key(meta_ord);
     }
 
     fn stringify(&self) -> String {
@@ -122,29 +88,29 @@ impl TodomeLine {
                 StatusKind::Todo => "+ ",
                 StatusKind::Doing => "* ",
                 StatusKind::Done => "- ",
-                StatusKind::Cancelled => "= ",
+                StatusKind::Cancel => "= ",
                 StatusKind::Other => "/ ",
             })
             .unwrap_or_default();
 
-        let meta = self.meta.iter().map(|rule| match rule {
-            Rule::Priority(Priority { value }) => format!("({})", value),
-            Rule::Due(Due { value }) => format!("({})", value.format("%Y-%m-%d")),
-            Rule::KeyVal(KeyVal { key, value }) => format!("{{{}:{}}}", key, value),
-            Rule::Category(Category { name }) => format!("[{}]", name),
-            _ => "".to_owned(),
+        let meta = self.meta.iter().map(|meta| match meta {
+            Meta::Priority(p) => format!("({})", p.value()),
+            Meta::Due(d) => format!("({})", d.value()),
+            Meta::Keyval(k) => format!("{{{}:{}}}", k.key(), k.value()),
+            Meta::Category(c) => format!("[{}]", c.name()),
         });
+
         contents.extend(meta);
         contents.extend(
             self.text
                 .as_ref()
-                .map(|text| text.content.trim().to_owned())
+                .map(|text| text.body().trim().to_owned())
                 .into_iter(),
         );
         contents.extend(
-            self.comment
+            self.memo
                 .as_ref()
-                .map(|comment| comment.content.clone())
+                .map(|memo| format!("# {}", memo.body().trim()))
                 .into_iter(),
         );
 
@@ -152,13 +118,12 @@ impl TodomeLine {
     }
 }
 
-fn rule_ord(rule: &Rule) -> i64 {
-    match rule {
-        Rule::Priority(_) => 1,
-        Rule::Due(_) => 2,
-        Rule::KeyVal(_) => 4,
-        Rule::Category(_) => 3,
-        _ => 0,
+fn meta_ord(meta: &Meta) -> i64 {
+    match meta {
+        Meta::Priority(_) => 1,
+        Meta::Due(_) => 2,
+        Meta::Keyval(_) => 4,
+        Meta::Category(_) => 3,
     }
 }
 

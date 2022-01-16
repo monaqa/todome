@@ -3,7 +3,7 @@ use std::{io::Read, path::PathBuf};
 use anyhow::*;
 
 use structopt::StructOpt;
-// use todome::format::format_lines;
+use todome::format::format_lines;
 
 #[derive(Debug, Clone, StructOpt)]
 struct Opts {
@@ -36,8 +36,7 @@ fn main() -> Result<()> {
                 buf
             };
 
-            // let formatted = format_lines(&text)?;
-            let formatted = text;
+            let formatted = format_lines(&text)?;
 
             if inplace && input.is_some() {
                 let input = input.as_ref().unwrap();
