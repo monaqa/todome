@@ -2,48 +2,66 @@ use std::{io::Read, path::PathBuf};
 
 use anyhow::*;
 
-use structopt::StructOpt;
+use clap::{Args, Parser, Subcommand};
 use todome::subcmd::format::format_lines;
 
-#[derive(Debug, Clone, StructOpt)]
+#[derive(Debug, Clone, Parser)]
+#[clap()]
 struct Opts {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     subcmd: SubCmd,
 }
 
-#[derive(Debug, Clone, StructOpt)]
+#[derive(Debug, Clone, Subcommand)]
 enum SubCmd {
-    #[structopt(alias = "fmt")]
-    Format {
-        /// フォーマットの対象となるファイル。
-        #[structopt(short, long)]
-        input: Option<PathBuf>,
-        #[structopt(long)]
-        inplace: bool,
-    },
+    #[clap(alias = "fmt")]
+    Format(InputInfo),
+    Sort(InputInfo),
+}
+
+#[derive(Debug, Clone, Args)]
+struct InputInfo {
+    #[clap(short, long)]
+    input: Option<PathBuf>,
+    #[clap(long)]
+    inplace: bool,
+}
+
+impl InputInfo {
+    fn get_text(&self) -> Result<String> {
+        let text = if let Some(input) = &self.input {
+            std::fs::read_to_string(input)?
+        } else {
+            let mut buf = String::new();
+            std::io::stdin().read_to_string(&mut buf)?;
+            buf
+        };
+        Ok(text)
+    }
+
+    fn save_or_print_text(&self, text: &str) -> Result<()> {
+        if self.inplace && self.input.is_some() {
+            let input = self.input.as_ref().unwrap();
+            std::fs::write(input, text)?;
+        } else {
+            print!("{text}");
+        }
+        Ok(())
+    }
 }
 
 fn main() -> Result<()> {
-    let opts = Opts::from_args();
-
-    match opts.subcmd {
-        SubCmd::Format { ref input, inplace } => {
-            let text = if let Some(input) = input {
-                std::fs::read_to_string(input)?
-            } else {
-                let mut buf = String::new();
-                std::io::stdin().read_to_string(&mut buf)?;
-                buf
-            };
-
+    match Opts::parse().subcmd {
+        SubCmd::Format(input) => {
+            let text = input.get_text()?;
             let formatted = format_lines(&text)?;
-
-            if inplace && input.is_some() {
-                let input = input.as_ref().unwrap();
-                std::fs::write(input, formatted)?;
-            } else {
-                print!("{}", formatted);
-            }
+            input.save_or_print_text(&formatted)?;
+        }
+        SubCmd::Sort(input) => {
+            let text = input.get_text()?;
+            todo!()
+            // let sorted = sort_tasks(&text)?;
+            // input.save_or_print_text(&sorted)?;
         }
     }
 
