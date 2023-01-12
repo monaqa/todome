@@ -42,21 +42,24 @@ impl Document {
             .collect()
     }
 
-    fn get_overdue(&self, date: &NaiveDate) -> Vec<Diagnostic> {
+    fn get_overdue(&self, today: &NaiveDate) -> Vec<Diagnostic> {
         self.root()
             .items_nested()
+            .into_iter()
             .filter(|item| item.as_task().is_some())
             .filter(|item| {
                 let is_valid = item
                     .scoped_statuses()
+                    .into_iter()
                     .next()
                     .map(|status| status.is_valid())
                     .unwrap_or(true);
                 let is_overdue = item
                     .scoped_dues()
+                    .into_iter()
                     .next()
-                    .and_then(|due| due.try_as_date())
-                    .map(|due| due < *date)
+                    .and_then(|date| date.deadline())
+                    .map(|date| date < *today)
                     .unwrap_or(false);
                 is_valid && is_overdue
             })
@@ -78,21 +81,24 @@ impl Document {
             .collect()
     }
 
-    fn get_due_today(&self, date: &NaiveDate) -> Vec<Diagnostic> {
+    fn get_due_today(&self, today: &NaiveDate) -> Vec<Diagnostic> {
         self.root()
             .items_nested()
+            .into_iter()
             .filter(|item| item.as_task().is_some())
             .filter(|item| {
                 let is_valid = item
                     .scoped_statuses()
+                    .into_iter()
                     .next()
                     .map(|status| status.is_valid())
                     .unwrap_or(true);
                 let is_due_today = item
                     .scoped_dues()
+                    .into_iter()
                     .next()
-                    .and_then(|due| due.try_as_date())
-                    .map(|due| due == *date)
+                    .and_then(|date| date.deadline())
+                    .map(|date| date == *today)
                     .unwrap_or(false);
                 is_valid && is_due_today
             })

@@ -36,7 +36,7 @@ impl TodomeLine {
         let line = line.trim();
 
         let source_file = SourceFile::parse(line.to_owned())?;
-        let item = source_file.items().next();
+        let item = source_file.items().into_iter().next();
         if item.is_none() {
             return Ok(TodomeLine {
                 indent,
@@ -51,14 +51,14 @@ impl TodomeLine {
             Item::Task(task) => TodomeLine {
                 indent,
                 status: task.status().map(|s| s.kind()),
-                meta: task.meta().collect_vec(),
+                meta: task.meta(),
                 memo: task.memo(),
                 text: task.text(),
             },
             Item::Header(header) => TodomeLine {
                 indent,
                 status: header.status().map(|s| s.kind()),
-                meta: header.meta().collect_vec(),
+                meta: header.meta(),
                 memo: header.memo(),
                 text: None,
             },
@@ -95,7 +95,7 @@ impl TodomeLine {
 
         let meta = self.meta.iter().map(|meta| match meta {
             Meta::Priority(p) => format!("({})", p.value()),
-            Meta::Due(d) => format!("({})", d.value()),
+            Meta::Date(d) => todo!(),
             Meta::Keyval(k) => format!("{{{}:{}}}", k.key(), k.value()),
             Meta::Category(c) => format!("[{}]", c.name()),
         });
@@ -121,7 +121,7 @@ impl TodomeLine {
 fn meta_ord(meta: &Meta) -> i64 {
     match meta {
         Meta::Priority(_) => 1,
-        Meta::Due(_) => 2,
+        Meta::Date(_) => 2,
         Meta::Keyval(_) => 4,
         Meta::Category(_) => 3,
     }
