@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::{debug, error, info, warn};
 use tower_lsp::{
     jsonrpc::ErrorCode,
-    lsp_types::{CompletionList, CompletionResponse, InitializeResult, ServerInfo},
+    lsp_types::{CompletionResponse, InitializeResult, ServerInfo},
     Client,
 };
 

@@ -1,10 +1,12 @@
-use anyhow::*;
+use std::fmt::Display;
+
+use chrono::NaiveDate;
 use itertools::Itertools;
 use regex::Regex;
-use tree_sitter_todome::syntax::ast::{Item, Memo, Meta, Priority, SourceFile, StatusKind, Text};
+use tree_sitter_todome::syntax::ast::{Item, Memo, Meta, SourceFile, StatusKind, Text};
 
 /// 与えられたドキュメントをフォーマットして文字列に変換する。
-pub fn format_lines(text: &str) -> Result<String> {
+pub fn format_lines(text: &str) -> anyhow::Result<String> {
     let lines = text.lines();
     let mut todome_lines = vec![];
 
@@ -28,8 +30,82 @@ pub struct TodomeLine {
     text: Option<Text>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct MetaData {
+    priority: Option<String>,
+    date: [Option<NaiveDate>; 3],
+    category: Vec<String>,
+}
+
+impl MetaData {
+    fn from_metas(metas: &[Meta]) -> Self {
+        let mut data = MetaData::default();
+        metas.iter().for_each(|meta| match meta {
+            Meta::Priority(p) => data.priority = Some(p.value()),
+            Meta::Date(d) => {
+                data.date[0] = d.start().or(data.date[0]);
+                data.date[1] = d.target().or(data.date[1]);
+                data.date[2] = d.deadline().or(data.date[2]);
+            }
+            Meta::Keyval(_) => {}
+            Meta::Category(c) => data.category.push(c.name()),
+        });
+        data
+    }
+}
+
+impl Display for MetaData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(priority) = &self.priority {
+            write!(f, "({priority}) ")?
+        };
+        match self.date {
+            [Some(start), Some(target), Some(deadline)] => {
+                write!(
+                    f,
+                    "({}~{} {}!) ",
+                    start.format("%Y-%m-%d"),
+                    target.format("%Y-%m-%d"),
+                    deadline.format("%Y-%m-%d"),
+                )?;
+            }
+            [None, Some(target), Some(deadline)] => {
+                write!(
+                    f,
+                    "({} {}!) ",
+                    target.format("%Y-%m-%d"),
+                    deadline.format("%Y-%m-%d"),
+                )?;
+            }
+            [Some(start), None, Some(deadline)] => {
+                write!(
+                    f,
+                    "({}~{}!) ",
+                    start.format("%Y-%m-%d"),
+                    deadline.format("%Y-%m-%d"),
+                )?;
+            }
+            [Some(start), Some(target), None] => {
+                write!(
+                    f,
+                    "({}~{}) ",
+                    start.format("%Y-%m-%d"),
+                    target.format("%Y-%m-%d"),
+                )?;
+            }
+            [Some(start), None, None] => write!(f, "({}~) ", start.format("%Y-%m-%d"),)?,
+            [None, Some(target), None] => write!(f, "({}) ", target.format("%Y-%m-%d"),)?,
+            [None, None, Some(deadline)] => write!(f, "({}!) ", deadline.format("%Y-%m-%d"),)?,
+            _ => {}
+        }
+        let cats = self.category.iter().map(|c| format!("[{c}] ")).join("");
+        write!(f, "{cats}")?;
+        Ok(())
+    }
+}
+
 impl TodomeLine {
-    fn parse(line: &str) -> Result<TodomeLine> {
+    fn parse(line: &str) -> anyhow::Result<TodomeLine> {
         let re = Regex::new(r#"^\t*"#)?;
         let caps = re.captures(line).unwrap();
         let indent = caps[0].len();
@@ -80,7 +156,6 @@ impl TodomeLine {
 
     fn stringify(&self) -> String {
         let indent = "\t".repeat(self.indent);
-        let mut contents = vec![];
 
         let status = self
             .status
@@ -93,28 +168,26 @@ impl TodomeLine {
             })
             .unwrap_or_default();
 
-        let meta = self.meta.iter().map(|meta| match meta {
-            Meta::Priority(p) => format!("({})", p.value()),
-            Meta::Date(d) => todo!(),
-            Meta::Keyval(k) => format!("{{{}:{}}}", k.key(), k.value()),
-            Meta::Category(c) => format!("[{}]", c.name()),
-        });
+        let meta = MetaData::from_metas(&self.meta).to_string();
 
-        contents.extend(meta);
-        contents.extend(
-            self.text
-                .as_ref()
-                .map(|text| text.body().trim().to_owned())
-                .into_iter(),
-        );
-        contents.extend(
-            self.memo
-                .as_ref()
-                .map(|memo| format!("# {}", memo.body().trim()))
-                .into_iter(),
-        );
+        // contents.push(meta);
+        let text: String = self
+            .text
+            .as_ref()
+            .map(|text| text.body().trim().to_owned())
+            .unwrap_or_default();
+        let memo: String = self
+            .memo
+            .as_ref()
+            .map(|memo| format!("# {}", memo.body().trim()))
+            .unwrap_or_default();
 
-        format!("{}{}{}\n", indent, status, contents.join(" "))
+        let content = [meta.trim(), &text, &memo]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .join(" ");
+
+        format!("{indent}{status}{content}\n")
     }
 }
 

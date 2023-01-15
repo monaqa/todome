@@ -58,7 +58,7 @@ fn main() -> Result<()> {
             input.save_or_print_text(&formatted)?;
         }
         SubCmd::Sort(input) => {
-            let text = input.get_text()?;
+            let _text = input.get_text()?;
             todo!()
             // let sorted = sort_tasks(&text)?;
             // input.save_or_print_text(&sorted)?;

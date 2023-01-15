@@ -1,6 +1,5 @@
 use chrono::{Duration, Local, NaiveDate};
-use log::debug;
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, Range};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag};
 use tree_sitter_todome::syntax::ast::{AstNode, Task};
 
 use crate::structure::{position::PosInto, syntax::Document};
@@ -14,7 +13,7 @@ fn default_diag() -> Diagnostic {
 
 impl Document {
     pub fn get_diagnostics(&self) -> Vec<Diagnostic> {
-        let today = Local::today().naive_local();
+        let today = Local::now().naive_local().date();
         [self.get_syntax_error(), self.get_date_diagnostics(today)].concat()
     }
 
@@ -80,7 +79,7 @@ impl Document {
     ///     * [ERROR] deadline < today
     ///     * [WARNING] target < today
     fn get_date_diags_for_task(&self, task: &Task, today: NaiveDate) -> Vec<Diagnostic> {
-        let Some(date) = task.meta().into_iter().find_map(|meta| meta.as_due().cloned())
+        let Some(date) = task.meta().into_iter().find_map(|meta| meta.as_date().cloned())
         else {
             return vec![]
         };
@@ -140,7 +139,7 @@ impl Document {
         }
 
         if let Some(start) = start {
-            if start > today {
+            if today < start {
                 let range = task
                     .syntax()
                     .range()
@@ -163,13 +162,13 @@ impl Document {
                 .try_pos_into(self)
                 .expect("failed to convert position.");
             match target {
-                d if d < today => diags.push(Diagnostic {
+                target if today > target => diags.push(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Warning),
                     message: "target date of this task is over.".to_owned(),
                     ..default_diag()
                 }),
-                d if d == today => diags.push(Diagnostic {
+                target if today == target => diags.push(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Information),
                     message: "this task is targeted today.".to_owned(),
@@ -186,21 +185,21 @@ impl Document {
                 .try_pos_into(self)
                 .expect("failed to convert position.");
             match deadline {
-                d if d < today => diags.push(Diagnostic {
+                deadline if today > deadline => diags.push(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Error),
                     message: "this task is OVERDUE!".to_owned(),
                     ..default_diag()
                 }),
-                d if d == today => diags.push(Diagnostic {
+                deadline if today == deadline => diags.push(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Warning),
                     message: "this task is due today.".to_owned(),
                     ..default_diag()
                 }),
-                d if d <= today - Duration::days(7) => diags.push(Diagnostic {
+                deadline if today >= deadline - Duration::days(7) => diags.push(Diagnostic {
                     range,
-                    severity: Some(DiagnosticSeverity::Warning),
+                    severity: Some(DiagnosticSeverity::Information),
                     message: "this task is due in 1 week.".to_owned(),
                     ..default_diag()
                 }),

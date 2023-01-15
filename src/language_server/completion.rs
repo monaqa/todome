@@ -70,7 +70,7 @@ impl Document {
             let before_cursor = &self.text()[start_of_line..cursor];
             let after_cursor = &self.text()[cursor..cursor + 1];
             let pos_open_bracket = before_cursor.rfind('[').unwrap_or(before_cursor.len());
-            let pos_close_bracket = if after_cursor == "]" { 1 } else { 0 };
+            let pos_close_bracket = usize::from(after_cursor == "]");
             (start_of_line + pos_open_bracket, cursor + pos_close_bracket)
                 .try_pos_into(self)
                 .unwrap()
@@ -184,13 +184,13 @@ impl Document {
             let before_cursor = &self.text()[start_of_line..cursor];
             let after_cursor = &self.text()[cursor..cursor + 1];
             let pos_open_paren = before_cursor.rfind('(').unwrap_or(before_cursor.len());
-            let pos_close_paren = if after_cursor == ")" { 1 } else { 0 };
+            let pos_close_paren = usize::from(after_cursor == ")");
             (start_of_line + pos_open_paren, cursor + pos_close_paren)
                 .try_pos_into(self)
                 .unwrap()
         };
 
-        let now = Local::today().naive_local();
+        let now = Local::now().naive_local().date();
         let candidates = [
             (now, "today"),
             (now + Duration::days(1), "tomorrow"),
