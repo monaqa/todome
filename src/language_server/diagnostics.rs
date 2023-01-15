@@ -200,7 +200,7 @@ impl Document {
                 deadline if today >= deadline - Duration::days(7) => diags.push(Diagnostic {
                     range,
                     severity: Some(DiagnosticSeverity::Information),
-                    message: "this task is due in 1 week.".to_owned(),
+                    message: "deadline is coming up.".to_owned(),
                     ..default_diag()
                 }),
                 _ => {}
